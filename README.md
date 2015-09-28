@@ -1,4 +1,4 @@
-## dedoop
+## dedooper
 
 Given two directory trees with some files that have the exact same checksum,
 replace the files in one tree with symlinks to the files in the other tree.
