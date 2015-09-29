@@ -67,20 +67,6 @@ class CacheItem(object):
         return self._mtime
 
 
-#def get_file_checksum(abspath, cache):
-#    if abspath in cache:
-#        return cache[abspath]
-#    m = hashlib.sha1()
-#    while True:
-#        b = f.read(READ_SIZE)
-#        if b == '':
-#            break
-#        m.update(b)
-#
-#    cache[abspath] = m.hexdigest()
-#    return cache[abspath]
-
-
 def hashwalk(root, cache=None):
     for (dirpath, dirnames, filenames) in os.walk(root):
         for filename in filenames:
@@ -100,8 +86,6 @@ def hashwalk(root, cache=None):
 def get_tree_filesizes(root, cache, show_source_dupes=True):
     print 'Walking %s...' % root
     sizes = {}
-
-    # TODO: store the file size and date
 
     for cacheitem in hashwalk(root, cache=cache):
         if show_source_dupes and cacheitem.size in sizes:
@@ -180,6 +164,8 @@ def main():
     parser.set_defaults(dry_run=True)
 
     args = parser.parse_args()
+
+    # TODO: back the cache to disk
     cache = {}
     src_filesizes = get_tree_filesizes(
             os.path.abspath(args.source),
