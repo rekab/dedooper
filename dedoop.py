@@ -114,9 +114,8 @@ def cleanup_tree(root, sizes, dry_run=True):
             if dry_run:
                 print 'ln -sf %s %s' % (other.abspath, cacheitem.abspath)
             else:
-                print 'removing duplicate file %s' % abspath
-                os.unlink(abspath)
                 print 'creating link %s -> %s' % (abspath, checksums[checksum].abspath)
+                os.unlink(abspath)
                 os.symlink(other.abspath, cacheitem.abspath)
             num_deduped += 1
             break
