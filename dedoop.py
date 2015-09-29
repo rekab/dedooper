@@ -9,76 +9,133 @@ import sys
 READ_SIZE = 1024 * 4
 
 
-def get_file_checksum(abspath, cache):
-    if abspath in cache:
-        return cache[abspath]
-    m = hashlib.sha1()
-    while True:
-        b = f.read(READ_SIZE)
-        if b == '':
-            break
-        m.update(b)
+class CacheItem(object):
+    def __init__(self, abspath, mtime=None, size=None, checksum=None):
+        self.abspath = abspath
+        self._mtime = mtime
+        self._size = size
+        self._checksum = checksum
 
-    cache[abspath] = m.hexdigest()
-    return cache[abspath]
+    def __str__(self):
+        return '%(abspath)s: mtime=%(_mtime)s size=%(_size)s checksum=%(_checksum)s' % (self.__dict__)
+
+    def __repr__(self):
+        return str(self)
+
+    @property
+    def checksum(self):
+        if self._checksum:
+            return self._checksum
+
+        m = hashlib.sha1()
+        with open(self.abspath, 'r') as f:
+            while True:
+                b = f.read(READ_SIZE)
+                if b == '':
+                    break
+                m.update(b)
+        self._checksum = m.hexdigest()
+        return self._checksum
+
+    def _stat(self):
+        stat = os.stat(self.abspath)
+        print 'statting %s ' % self.abspath
+        self._size = stat.st_size
+        self._mtime = int(stat.st_mtime)
+
+    def verify(self):
+        """Verify the cache item hasn't changed.
+        
+        For speed, only looks at mtime and size."""
+        if self._size is None or self._mtime is None:
+            return False
+        stat = os.stat(self.abspath)
+        return self._size == stat.st_size and self._mtime == int(stat.st_mtime)
+
+    @property
+    def size(self):
+        if self._size is not None:
+            return self._size
+        self._stat()
+        return self._size
+
+    @property
+    def mtime(self):
+        if self._mtime is not None:
+            return self._mtime
+        self._stat()
+        return self._mtime
 
 
-def walk(root, callback):
+#def get_file_checksum(abspath, cache):
+#    if abspath in cache:
+#        return cache[abspath]
+#    m = hashlib.sha1()
+#    while True:
+#        b = f.read(READ_SIZE)
+#        if b == '':
+#            break
+#        m.update(b)
+#
+#    cache[abspath] = m.hexdigest()
+#    return cache[abspath]
+
+
+def hashwalk(root, cache=None):
     for (dirpath, dirnames, filenames) in os.walk(root):
         for filename in filenames:
             abspath = os.path.join(dirpath, filename)
             if os.path.islink(abspath):
                 continue
-            with open(abspath, 'r') as f:
-                callback(abspath, checksum)
+            # If the item is in the cache and it hasn't changed.
+            if cache is not None:
+                if abspath in cache and cache[abspath].verify():
+                    yield cache[abspath]
+                cache[abspath] = CacheItem(abspath)
+                yield cache[abspath]
+            else:
+                yield CacheItem(abspath)
 
 
-def hashwalk(root):
-    for (dirpath, dirnames, filenames) in os.walk(root):
-        for filename in filenames:
-            abspath = os.path.join(dirpath, filename)
-            if os.path.islink(abspath):
-                continue
-            with open(abspath, 'r') as f:
-                m = hashlib.sha1()
-                m.update(f.read())
-                checksum = m.hexdigest()
-                yield abspath, checksum
-
-
-def get_tree_checksums(root, show_source_dupes=True):
-    print 'Checksumming %s...' % root
-    checksums = {}
+def get_tree_filesizes(root, cache, show_source_dupes=True):
+    print 'Walking %s...' % root
+    sizes = {}
 
     # TODO: store the file size and date
 
-    for abspath, checksum in hashwalk(root):
-        if checksum in checksums and show_source_dupes:
-            # Print collisions in the tree
-            print '%s: %s == %s' % (
-                    root,
-                    abspath.replace(root, '', 1).lstrip('/'),
-                    checksums[checksum].replace(root, '', 1).lstrip('/'))
-        checksums[checksum] = abspath
+    for cacheitem in hashwalk(root, cache=cache):
+        if show_source_dupes and cacheitem.size in sizes:
+            for other in sizes[cacheitem.size]:
+                if cachitem.checksum == other.checksum:
+                    # Print collisions in the tree
+                    print '%s: %s == %s' % (
+                            root,
+                            cacheitem.abspath.replace(root, '', 1).lstrip('/'),
+                            other.abspath.replace(root, '', 1).lstrip('/'))
+        sizes.setdefault(cacheitem.size, []).append(cacheitem)
 
-    print 'Checksummed %d files in %s.' % (len(checksums), root)
-    return checksums
+    print 'Saw %d files in %s.' % (len(sizes), root)
+    return sizes
 
 
-def cleanup_tree(root, checksums, dry_run=True):
+def cleanup_tree(root, sizes, dry_run=True):
     num_deduped = 0
 
-    for abspath, checksum in hashwalk(root):
-        if checksum not in checksums:
+    for cacheitem in hashwalk(root):
+        if cacheitem.size not in sizes:
             return
-        if dry_run:
-            print 'ln -sf %s %s' % (checksums[checksum], abspath)
-        else:
-            print 'removing duplicate file %s' % abspath
-            os.unlink(abspath)
-            print 'creating link %s -> %s' % (abspath, checksums[checksum])
-            os.symlink(checksums[checksum], abspath)
-        num_deduped += 1
+        for other in sizes[cacheitem.size]:
+            if other.checksum != cacheitem.checksum:
+                continue
+            if dry_run:
+                print 'ln -sf %s %s' % (other.abspath, cacheitem.abspath)
+            else:
+                print 'removing duplicate file %s' % abspath
+                os.unlink(abspath)
+                print 'creating link %s -> %s' % (abspath, checksums[checksum].abspath)
+                os.symlink(other.abspath, cacheitem.abspath)
+            num_deduped += 1
+            break
 
     print 'deduped %d files' % num_deduped
 
@@ -123,10 +180,13 @@ def main():
     parser.set_defaults(dry_run=True)
 
     args = parser.parse_args()
-    src_checksums = get_tree_checksums(
+    cache = {}
+    src_filesizes = get_tree_filesizes(
             os.path.abspath(args.source),
+            cache,
             show_source_dupes=args.show_source_dupes)
-    cleanup_tree(os.path.abspath(args.cleanup), src_checksums, dry_run=args.dry_run)
+    print 'cache=%s' % cache
+    cleanup_tree(os.path.abspath(args.cleanup), src_filesizes, dry_run=args.dry_run)
 
 
 if __name__ == '__main__':
