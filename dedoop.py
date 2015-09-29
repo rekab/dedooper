@@ -6,7 +6,34 @@ import os
 import sys
 
 
-def hashwalk(root, callback):
+READ_SIZE = 1024 * 4
+
+
+def get_file_checksum(abspath, cache):
+    if abspath in cache:
+        return cache[abspath]
+    m = hashlib.sha1()
+    while True:
+        b = f.read(READ_SIZE)
+        if b == '':
+            break
+        m.update(b)
+
+    cache[abspath] = m.hexdigest()
+    return cache[abspath]
+
+
+def walk(root, callback):
+    for (dirpath, dirnames, filenames) in os.walk(root):
+        for filename in filenames:
+            abspath = os.path.join(dirpath, filename)
+            if os.path.islink(abspath):
+                continue
+            with open(abspath, 'r') as f:
+                callback(abspath, checksum)
+
+
+def hashwalk(root):
     for (dirpath, dirnames, filenames) in os.walk(root):
         for filename in filenames:
             abspath = os.path.join(dirpath, filename)
@@ -16,31 +43,32 @@ def hashwalk(root, callback):
                 m = hashlib.sha1()
                 m.update(f.read())
                 checksum = m.hexdigest()
-                callback(abspath, checksum)
+                yield abspath, checksum
 
 
 def get_tree_checksums(root, show_source_dupes=True):
     print 'Checksumming %s...' % root
     checksums = {}
 
-    def callback(abspath, checksum):
+    # TODO: store the file size and date
+
+    for abspath, checksum in hashwalk(root):
         if checksum in checksums and show_source_dupes:
             # Print collisions in the tree
             print '%s: %s == %s' % (
-                    root, 
-                    abspath.replace(root, '', 1).lstrip('/'), 
+                    root,
+                    abspath.replace(root, '', 1).lstrip('/'),
                     checksums[checksum].replace(root, '', 1).lstrip('/'))
         checksums[checksum] = abspath
-
-    hashwalk(root, callback)
 
     print 'Checksummed %d files in %s.' % (len(checksums), root)
     return checksums
 
 
 def cleanup_tree(root, checksums, dry_run=True):
-    num_deduped = [0]
-    def callback(abspath, checksum):
+    num_deduped = 0
+
+    for abspath, checksum in hashwalk(root):
         if checksum not in checksums:
             return
         if dry_run:
@@ -50,21 +78,25 @@ def cleanup_tree(root, checksums, dry_run=True):
             os.unlink(abspath)
             print 'creating link %s -> %s' % (abspath, checksums[checksum])
             os.symlink(checksums[checksum], abspath)
-        num_deduped[0] += 1
+        num_deduped += 1
 
-    hashwalk(root, callback)
-    print 'deduped %d files' % num_deduped[0]
+    print 'deduped %d files' % num_deduped
 
 
 def main():
     parser = argparse.ArgumentParser(
             'Find duplicate files and turn half of them into symlinks.')
+
     parser.add_argument(
             'source', help='Directory root containing original files.')
     parser.add_argument(
-            'cleanup', 
+            'cleanup',
             help='Directory root containing duplicate files '
                  'to be turned into symlinks.')
+
+    parser.add_argument(
+            '--cache_file',
+            help='where to store the cache')
 
     parser.add_argument(
             '--show_source_dupes',
