@@ -164,10 +164,13 @@ def cleanup_tree(root, sizes, callback):
         for other in sizes[cacheitem.size]:
             if other.checksum != cacheitem.checksum:
                 continue
-            # TODO: check if source inode == dest inode
-            callback(other.abspath, cacheitem.abspath)
-            num_deduped += 1
-            break
+            if os.path.realpath(other.abspath) == os.path.realpath(cacheitem.abspath):
+                logging.error("not symlinking %s to %s: they're the same file",
+                        other.abspath, cacheitem.abspath)
+            else:
+                callback(other.abspath, cacheitem.abspath)
+                num_deduped += 1
+                break
 
     logging.info('deduped %d files', num_deduped)
 
