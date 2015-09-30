@@ -18,7 +18,7 @@ class TestCache(unittest.TestCase):
         'no_checksum': dedoop.CacheItem('no_checksum'),
         'has_checksum': dedoop.CacheItem('has_checksum', checksum='foo')
     }
-    with tempfile.NamedTemporaryFile(delete=False) as cache_file:
+    with tempfile.NamedTemporaryFile() as cache_file:
       dedoop.write_cache(cache_file.name, test_cache)
       cache = dedoop.load_cache(cache_file.name)
       self.assertEqual(2, len(cache))

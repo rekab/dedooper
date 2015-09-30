@@ -95,9 +95,12 @@ def hashwalk(root, cache=None):
             # If the item is in the cache and it hasn't changed.
             if cache is not None:
                 if abspath in cache and cache[abspath].verify():
+                    print 'cache hit for %s' % abspath
                     yield cache[abspath]
-                cache[abspath] = CacheItem(abspath)
-                yield cache[abspath]
+                else:
+                    print 'cache miss for %s' % abspath
+                    cache[abspath] = CacheItem(abspath)
+                    yield cache[abspath]
             else:
                 yield CacheItem(abspath)
 
@@ -113,11 +116,13 @@ def get_tree_filesizes(root, cache, show_source_dupes=True):
     """
     print 'Walking %s...' % root
     sizes = {}
-
+    num_items = 0
     for cacheitem in hashwalk(root, cache=cache):
+        num_items += 1
         if show_source_dupes and cacheitem.size in sizes:
             for other in sizes[cacheitem.size]:
-                if cachitem.checksum == other.checksum:
+                print 'found files with same size: %s and %s' % (cacheitem.abspath, other.abspath)
+                if cacheitem.checksum == other.checksum:
                     # Print collisions in the tree
                     print '%s: %s == %s' % (
                             root,
@@ -125,7 +130,7 @@ def get_tree_filesizes(root, cache, show_source_dupes=True):
                             other.abspath.replace(root, '', 1).lstrip('/'))
         sizes.setdefault(cacheitem.size, []).append(cacheitem)
 
-    print 'Saw %d files in %s.' % (len(sizes), root)
+    print 'Saw %d files and %d sizes in %s.' % (num_items, len(sizes), root)
     return sizes
 
 
@@ -180,10 +185,13 @@ def write_cache(cache_path, cache):
         cache_path: file to write
         cache: dictionary of CacheItems
     """
-    with open(cache_path, 'w') as f:
+    # Write to a temp file, then swap to the final destination.
+    tmp_output = cache_path + '.tmp'
+    with open(tmp_output, 'w') as f:
         for cache_key in cache:
             assert cache[cache_key].abspath == cache_key
             print >>f, json.dumps(cache[cache_key], cls=CacheItemEncoder)
+    os.rename(tmp_output, cache_path)
     print 'wrote cache to %s' % cache_path
 
 
@@ -233,14 +241,13 @@ def main():
         print 'source dir is the same as cleanup dir'
         sys.exit(1)
 
-    # TODO: back the cache to disk
-    cache = {}
+    cache = load_cache(args.cache_file)
     src_filesizes = get_tree_filesizes(
             os.path.abspath(args.source),
             cache,
             show_source_dupes=args.show_source_dupes)
-    print 'cache=%s' % cache
     cleanup_tree(os.path.abspath(args.cleanup), src_filesizes, dry_run=args.dry_run)
+    write_cache(args.cache_file, cache)
 
 
 if __name__ == '__main__':
