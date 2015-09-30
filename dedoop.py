@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import logging
 import os
 import sys
 
@@ -42,7 +43,7 @@ class CacheItem(object):
 
     def _stat(self):
         stat = os.stat(self.abspath)
-        print 'statting %s ' % self.abspath
+        logging.debug('statting %s', self.abspath)
         self._size = stat.st_size
         self._mtime = int(stat.st_mtime)
 
@@ -95,10 +96,10 @@ def hashwalk(root, cache=None):
             # If the item is in the cache and it hasn't changed.
             if cache is not None:
                 if abspath in cache and cache[abspath].verify():
-                    print 'cache hit for %s' % abspath
+                    logging.debug('cache hit for %s', abspath)
                     yield cache[abspath]
                 else:
-                    print 'cache miss for %s' % abspath
+                    logging.debug('cache miss for %s', abspath)
                     cache[abspath] = CacheItem(abspath)
                     yield cache[abspath]
             else:
@@ -114,23 +115,24 @@ def get_tree_filesizes(root, cache, show_source_dupes=True):
     Returns:
         Dictionary keyed by file size, containing lists of CacheItem objects.
     """
-    print 'Walking %s...' % root
+    logging.info('Walking %s...', root)
     sizes = {}
     num_items = 0
     for cacheitem in hashwalk(root, cache=cache):
         num_items += 1
         if show_source_dupes and cacheitem.size in sizes:
             for other in sizes[cacheitem.size]:
-                print 'found files with same size: %s and %s' % (cacheitem.abspath, other.abspath)
+                logging.debug('found files with same size: %s and %s',
+                        cacheitem.abspath, other.abspath)
                 if cacheitem.checksum == other.checksum:
                     # Print collisions in the tree
-                    print '%s: %s == %s' % (
+                    logging.warning('%s: %s == %s',
                             root,
                             cacheitem.abspath.replace(root, '', 1).lstrip('/'),
                             other.abspath.replace(root, '', 1).lstrip('/'))
         sizes.setdefault(cacheitem.size, []).append(cacheitem)
 
-    print 'Saw %d files and %d sizes in %s.' % (num_items, len(sizes), root)
+    logging.info('Saw %d files and %d sizes in %s.', num_items, len(sizes), root)
     return sizes
 
 
@@ -147,13 +149,13 @@ def cleanup_tree(root, sizes, dry_run=True):
             if dry_run:
                 print 'ln -sf %s %s' % (other.abspath, cacheitem.abspath)
             else:
-                print 'creating link %s -> %s' % (abspath, checksums[checksum].abspath)
+                logging.info('creating link %s -> %s', abspath, checksums[checksum].abspath)
                 os.unlink(abspath)
                 os.symlink(other.abspath, cacheitem.abspath)
             num_deduped += 1
             break
 
-    print 'deduped %d files' % num_deduped
+    logging.info('deduped %d files', num_deduped)
 
 
 def load_cache(cache_path):
@@ -174,7 +176,7 @@ def load_cache(cache_path):
                         checksum=values[3])
                 cache[cache_item.abspath] = cache_item
     else:
-        print 'cache file %s does not exist' % cache_path
+        logging.warning('cache file %s does not exist' % cache_path)
     return cache
 
 
@@ -192,7 +194,7 @@ def write_cache(cache_path, cache):
             assert cache[cache_key].abspath == cache_key
             print >>f, json.dumps(cache[cache_key], cls=CacheItemEncoder)
     os.rename(tmp_output, cache_path)
-    print 'wrote cache to %s' % cache_path
+    logging.info('wrote cache to %s', cache_path)
 
 
 def main():
@@ -235,10 +237,20 @@ def main():
             help="Execute commands.")
     parser.set_defaults(dry_run=True)
 
+    parser.add_argument(
+            '--log_level',
+            dest='log_level',
+            default=logging.INFO,
+            help='log level (higher is quieter)')
+
     args = parser.parse_args()
 
+    logging.basicConfig(
+            level=args.log_level,
+            format='%(levelname)-8s: %(message)s')
+
     if os.path.realpath(args.source) == os.path.realpath(args.cleanup):
-        print 'source dir is the same as cleanup dir'
+        logging.critical('source dir is the same as cleanup dir')
         sys.exit(1)
 
     cache = load_cache(args.cache_file)
