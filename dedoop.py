@@ -115,7 +115,7 @@ def get_tree_filesizes(root, cache, show_source_dupes=True):
     Returns:
         Dictionary keyed by file size, containing lists of CacheItem objects.
     """
-    logging.info('Walking %s...', root)
+    logging.info('walking %s...', root)
     sizes = {}
     num_items = 0
     for cacheitem in hashwalk(root, cache=cache):
@@ -132,7 +132,7 @@ def get_tree_filesizes(root, cache, show_source_dupes=True):
                             other.abspath.replace(root, '', 1).lstrip('/'))
         sizes.setdefault(cacheitem.size, []).append(cacheitem)
 
-    logging.info('Saw %d files and %d sizes in %s.', num_items, len(sizes), root)
+    logging.info('saw %d files and %d sizes in %s.', num_items, len(sizes), root)
     return sizes
 
 
@@ -147,12 +147,12 @@ def create_symlink(other, cleanup):
 
 
 def prompt_before_symlinking(other, cleanup):
-    sys.stdout.write('Create symlink %s -> %s? [y/N] ' % (cleanup, other))
+    sys.stdout.write('Create symlink %s -> %s? [Y/n] ' % (cleanup, other))
     choice = raw_input().lower()
-    if choice.startswith('y'):
-        create_symlink(other, cleanup)
-    else:
+    if choice.startswith('n'):
         logging.info('Not creating symlink for %s', cleanup)
+    else:
+        create_symlink(other, cleanup)
 
 
 def cleanup_tree(root, sizes, callback):
