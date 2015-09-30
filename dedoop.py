@@ -2,6 +2,7 @@
 
 import argparse
 import hashlib
+import json
 import os
 import sys
 
@@ -10,6 +11,8 @@ READ_SIZE = 1024 * 4
 
 
 class CacheItem(object):
+    """Represents a file on disk with properties evaluated lazily."""
+
     def __init__(self, abspath, mtime=None, size=None, checksum=None):
         self.abspath = abspath
         self._mtime = mtime
@@ -45,7 +48,7 @@ class CacheItem(object):
 
     def verify(self):
         """Verify the cache item hasn't changed.
-        
+
         For speed, only looks at mtime and size."""
         if self._size is None or self._mtime is None:
             return False
@@ -67,7 +70,23 @@ class CacheItem(object):
         return self._mtime
 
 
+class CacheItemEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, CacheItem):
+            # Return the serialized item, and avoid evaluation of properties.
+            return [obj.abspath, obj._mtime, obj._size, obj._checksum]
+        return json.JSONEncoder.default(self, obj)
+
+
 def hashwalk(root, cache=None):
+    """Walk a tree and create CacheItems for files.
+
+    Args:
+        cache: optional dict keyed by abspath, containing CacheItems. Will be
+               modified.
+    Yields:
+        CacheItems found.
+    """
     for (dirpath, dirnames, filenames) in os.walk(root):
         for filename in filenames:
             abspath = os.path.join(dirpath, filename)
@@ -84,6 +103,14 @@ def hashwalk(root, cache=None):
 
 
 def get_tree_filesizes(root, cache, show_source_dupes=True):
+    """Walk a tree, get CacheItems.
+
+    Args:
+        cache: optional dict keyed by abspath, containing CacheItems. Will be
+               modified.
+    Returns:
+        Dictionary keyed by file size, containing lists of CacheItem objects.
+    """
     print 'Walking %s...' % root
     sizes = {}
 
@@ -111,6 +138,7 @@ def cleanup_tree(root, sizes, dry_run=True):
         for other in sizes[cacheitem.size]:
             if other.checksum != cacheitem.checksum:
                 continue
+            # TODO: check if source inode == dest inode
             if dry_run:
                 print 'ln -sf %s %s' % (other.abspath, cacheitem.abspath)
             else:
@@ -121,6 +149,42 @@ def cleanup_tree(root, sizes, dry_run=True):
             break
 
     print 'deduped %d files' % num_deduped
+
+
+def load_cache(cache_path):
+    """Read a dict of CacheItems from a JSON-encoded file.
+
+    Args:
+        cache_path: file to write
+    Returns:
+        dictionary keyed by abspath of CacheItems.
+    """
+    cache = {}
+    if os.path.exists(cache_path):
+        with open(cache_path, 'r') as f:
+            for line in f:
+                values = json.loads(line)
+                cache_item = CacheItem(
+                        values[0], mtime=values[1], size=values[2],
+                        checksum=values[3])
+                cache[cache_item.abspath] = cache_item
+    else:
+        print 'cache file %s does not exist' % cache_path
+    return cache
+
+
+def write_cache(cache_path, cache):
+    """Write a dictionary of CacheItems to a JSON-encoded file.
+
+    Args:
+        cache_path: file to write
+        cache: dictionary of CacheItems
+    """
+    with open(cache_path, 'w') as f:
+        for cache_key in cache:
+            assert cache[cache_key].abspath == cache_key
+            print >>f, json.dumps(cache[cache_key], cls=CacheItemEncoder)
+    print 'wrote cache to %s' % cache_path
 
 
 def main():
@@ -136,6 +200,7 @@ def main():
 
     parser.add_argument(
             '--cache_file',
+            default=os.path.expanduser('~/.dedooper.cache'),
             help='where to store the cache')
 
     parser.add_argument(
@@ -163,6 +228,10 @@ def main():
     parser.set_defaults(dry_run=True)
 
     args = parser.parse_args()
+
+    if os.path.realpath(args.source) == os.path.realpath(args.cleanup):
+        print 'source dir is the same as cleanup dir'
+        sys.exit(1)
 
     # TODO: back the cache to disk
     cache = {}
