@@ -136,7 +136,26 @@ def get_tree_filesizes(root, cache, show_source_dupes=True):
     return sizes
 
 
-def cleanup_tree(root, sizes, dry_run=True):
+def print_cleanup_command(other, cleanup):
+    print 'ln -sf %s %s' % (other, cleanup)
+
+
+def create_symlink(other, cleanup):
+    logging.info('creating link %s -> %s', cleanup, other)
+    os.unlink(cleanup)
+    os.symlink(other, cleanup)
+
+
+def prompt_before_symlinking(other, cleanup):
+    sys.stdout.write('Create symlink %s -> %s? [y/N] ' % (cleanup, other))
+    choice = raw_input().lower()
+    if choice.startswith('y'):
+        create_symlink(other, cleanup)
+    else:
+        logging.info('Not creating symlink for %s', cleanup)
+
+
+def cleanup_tree(root, sizes, callback):
     num_deduped = 0
 
     for cacheitem in hashwalk(root):
@@ -146,12 +165,7 @@ def cleanup_tree(root, sizes, dry_run=True):
             if other.checksum != cacheitem.checksum:
                 continue
             # TODO: check if source inode == dest inode
-            if dry_run:
-                print 'ln -sf %s %s' % (other.abspath, cacheitem.abspath)
-            else:
-                logging.info('creating link %s -> %s', abspath, checksums[checksum].abspath)
-                os.unlink(abspath)
-                os.symlink(other.abspath, cacheitem.abspath)
+            callback(other.abspath, cacheitem.abspath)
             num_deduped += 1
             break
 
@@ -234,8 +248,20 @@ def main():
             '--nodry_run',
             dest='dry_run',
             action='store_false',
-            help="Execute commands.")
+            help='Execute commands')
     parser.set_defaults(dry_run=True)
+
+    parser.add_argument(
+            '--prompt',
+            dest='prompt',
+            action='store_true',
+            help='Prompt before creating symlinks')
+    parser.add_argument(
+            '--noprompt',
+            dest='prompt',
+            action='store_false',
+            help="Don't prompt before creating symlinks")
+    parser.set_defaults(prompt=True)
 
     parser.add_argument(
             '--log_level',
@@ -253,13 +279,24 @@ def main():
         logging.critical('source dir is the same as cleanup dir')
         sys.exit(1)
 
+    # Find out what's in the source tree.
     cache = load_cache(args.cache_file)
     src_filesizes = get_tree_filesizes(
             os.path.abspath(args.source),
             cache,
             show_source_dupes=args.show_source_dupes)
-    cleanup_tree(os.path.abspath(args.cleanup), src_filesizes, dry_run=args.dry_run)
     write_cache(args.cache_file, cache)
+
+    # Pick a cleanup strategy.
+    callback = print_cleanup_command
+    if not args.dry_run:
+        if args.prompt:
+            callback = prompt_before_symlinking
+        else:
+            callback = create_symlink
+
+    # Clean up the cleanup tree.
+    cleanup_tree(os.path.abspath(args.cleanup), src_filesizes, callback=callback)
 
 
 if __name__ == '__main__':
