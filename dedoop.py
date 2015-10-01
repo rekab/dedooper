@@ -186,10 +186,12 @@ def prompt_before_symlinking(other, cleanup):
 
 
 def cleanup_tree(root, sizes, callback):
+    logging.info('attempting to clean up %s', root)
     num_deduped = 0
 
     for cacheitem in hashwalk(root):
         if cacheitem.size not in sizes:
+            logging.debug('%s is unique', cacheitem)
             return
         for other in sizes[cacheitem.size]:
             if other.checksum != cacheitem.checksum:
