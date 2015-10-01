@@ -127,7 +127,6 @@ def hashwalk(root, cache=None):
                     cache[abspath] = CacheItem(abspath)
                     yield cache[abspath]
             else:
-                logging.debug('returning cacheitem for %s', abspath)
                 yield CacheItem(abspath)
 
 
@@ -194,7 +193,7 @@ def cleanup_tree(root, sizes, callback):
     for cacheitem in hashwalk(root):
         if cacheitem.size not in sizes:
             logging.debug('%s is unique', cacheitem)
-            return
+            continue
         for other in sizes[cacheitem.size]:
             if other.checksum != cacheitem.checksum:
                 continue
