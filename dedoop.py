@@ -10,6 +10,12 @@ import sys
 
 READ_SIZE = 1024 * 4
 
+class Error(Exception):
+    pass
+
+class BadRoot(Error):
+    pass
+
 
 class CacheItem(object):
     """Represents a file on disk with properties evaluated lazily."""
@@ -31,6 +37,7 @@ class CacheItem(object):
         if self._checksum:
             return self._checksum
 
+        logging.info('calculating checksum for %s', self.abspath)
         m = hashlib.sha1()
         with open(self.abspath, 'r') as f:
             while True:
@@ -52,7 +59,9 @@ class CacheItem(object):
 
         For speed, only looks at mtime and size."""
         if self._size is None or self._mtime is None:
+            logging.debug('%s does not have stats in the cache', self.abspath)
             return False
+        logging.debug('checking if %s has changed', self.abspath)
         stat = os.stat(self.abspath)
         return self._size == stat.st_size and self._mtime == int(stat.st_mtime)
 
@@ -88,6 +97,11 @@ def hashwalk(root, cache=None):
     Yields:
         CacheItems found.
     """
+    if not os.path.exists(root):
+        raise BadRoot('%s does not exist' % root)
+    if not os.path.isdir(root):
+        raise BadRoot('%s is not a directory' % root)
+
     for (dirpath, dirnames, filenames) in os.walk(root):
         for filename in filenames:
             abspath = os.path.join(dirpath, filename)
@@ -270,7 +284,7 @@ def main():
             '--log_level',
             dest='log_level',
             default=logging.INFO,
-            help='log level (higher is quieter)')
+            help='log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)')
 
     args = parser.parse_args()
 
@@ -284,10 +298,15 @@ def main():
 
     # Find out what's in the source tree.
     cache = load_cache(args.cache_file)
-    src_filesizes = get_tree_filesizes(
-            os.path.abspath(args.source),
-            cache,
-            show_source_dupes=args.show_source_dupes)
+    try:
+        src_filesizes = get_tree_filesizes(
+                os.path.abspath(args.source),
+                cache,
+                show_source_dupes=args.show_source_dupes)
+    except BadRoot as e:
+        logging.critical(e)
+        sys.exit(1)
+
     write_cache(args.cache_file, cache)
 
     # Pick a cleanup strategy.
@@ -299,7 +318,12 @@ def main():
             callback = create_symlink
 
     # Clean up the cleanup tree.
-    cleanup_tree(os.path.abspath(args.cleanup), src_filesizes, callback=callback)
+    try:
+        cleanup_tree(
+                os.path.abspath(args.cleanup), src_filesizes, callback=callback)
+    except BadRoot as e:
+        logging.critical(e)
+        sys.exit(1)
 
 
 if __name__ == '__main__':
