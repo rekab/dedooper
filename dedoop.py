@@ -111,6 +111,7 @@ def hashwalk(root, cache=None):
     if not os.path.isdir(root):
         raise BadRoot('%s is not a directory' % root)
 
+    logging.debug('walking %s', root)
     for (dirpath, dirnames, filenames) in os.walk(root):
         for filename in filenames:
             abspath = os.path.join(dirpath, filename)
@@ -126,6 +127,7 @@ def hashwalk(root, cache=None):
                     cache[abspath] = CacheItem(abspath)
                     yield cache[abspath]
             else:
+                logging.debug('returning cacheitem for %s', abspath)
                 yield CacheItem(abspath)
 
 
