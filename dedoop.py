@@ -5,6 +5,7 @@ import hashlib
 import json
 import logging
 import os
+import pipes
 import sys
 
 
@@ -116,6 +117,9 @@ def hashwalk(root, cache=None):
         for filename in filenames:
             abspath = os.path.join(dirpath, filename)
             if os.path.islink(abspath):
+                if abspath in cache:
+                    logging.debug('removing cache entry for %s', abspath)
+                    del cache[abspath]
                 continue
             # If the item is in the cache and it hasn't changed.
             if cache is not None:
@@ -168,7 +172,7 @@ def get_tree_filesizes(
 
 
 def print_cleanup_command(other, cleanup):
-    print 'ln -sf %s %s' % (other, cleanup)
+    print 'ln -sf %s %s' % (pipes.quote(other), pipes.quote(cleanup))
 
 
 def create_symlink(other, cleanup):
@@ -186,11 +190,11 @@ def prompt_before_symlinking(other, cleanup):
         create_symlink(other, cleanup)
 
 
-def cleanup_tree(root, sizes, callback):
+def cleanup_tree(root, sizes, cache, callback):
     logging.info('attempting to clean up %s', root)
     num_deduped = 0
 
-    for cacheitem in hashwalk(root):
+    for cacheitem in hashwalk(root, cache):
         if cacheitem.size not in sizes:
             logging.debug('%s is unique', cacheitem)
             continue
@@ -354,10 +358,15 @@ def main():
     # Clean up the cleanup tree.
     try:
         cleanup_tree(
-                os.path.abspath(args.cleanup), src_filesizes, callback=callback)
+                os.path.abspath(args.cleanup),
+                src_filesizes,
+                cache,
+                callback=callback)
     except BadRoot as e:
         logging.critical(e)
         sys.exit(1)
+    finally:
+        write_cache(args.cache_file, cache)
 
 
 if __name__ == '__main__':
