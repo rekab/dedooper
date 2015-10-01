@@ -13,8 +13,17 @@ READ_SIZE = 1024 * 4
 class Error(Exception):
     pass
 
+
 class BadRoot(Error):
     pass
+
+
+class CannotCreateCacheFile(Error):
+    def __init__(self, cache_path):
+        self.cache_path = cache_path
+
+    def __str__(self):
+        return 'Cannot create cache file "%s"' % self.cache_path
 
 
 class CacheItem(object):
@@ -120,12 +129,16 @@ def hashwalk(root, cache=None):
                 yield CacheItem(abspath)
 
 
-def get_tree_filesizes(root, cache, show_source_dupes=True):
+def get_tree_filesizes(
+        root, cache, min_filesize=1024*1024*1024, show_source_dupes=True):
     """Walk a tree, get CacheItems.
 
     Args:
+        root: root directory path
         cache: optional dict keyed by abspath, containing CacheItems. Will be
                modified.
+        min_filesize: minimum filesize in bytes to look at (default: 1GB)
+        show_source_dupes: report dupes in the source tree (default: True)
     Returns:
         Dictionary keyed by file size, containing lists of CacheItem objects.
     """
@@ -133,6 +146,9 @@ def get_tree_filesizes(root, cache, show_source_dupes=True):
     sizes = {}
     num_items = 0
     for cacheitem in hashwalk(root, cache=cache):
+        if cacheitem.size < min_filesize:
+            logging.info('skipping small file %s (size=%s < min=%s)', cacheitem.abspath, cacheitem.size, min_filesize)
+            continue
         num_items += 1
         if show_source_dupes and cacheitem.size in sizes:
             for other in sizes[cacheitem.size]:
@@ -207,6 +223,8 @@ def load_cache(cache_path):
                         checksum=values[3])
                 cache[cache_item.abspath] = cache_item
     else:
+        if not os.access(os.path.dirname(cache_path), os.W_OK):
+            raise CannotCreateCacheFile(cache_path)
         logging.warning('cache file %s does not exist' % cache_path)
     return cache
 
@@ -254,7 +272,7 @@ def main():
             dest='show_source_dupes',
             action='store_false',
             help="Don't show duplicate files in the source directory")
-    parser.set_defaults(show_source_dupes=True)
+    parser.set_defaults(show_source_dupes=False)
 
     parser.add_argument(
             '--dry_run',
@@ -284,7 +302,13 @@ def main():
             '--log_level',
             dest='log_level',
             default=logging.INFO,
-            help='log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)')
+            help='DEBUG, INFO, WARNING, ERROR, or CRITICAL (default: INFO)')
+    parser.add_argument(
+            '--min_filesize',
+            dest='min_filesize',
+            type=int,
+            default=1024*1024*1024,
+            help='minimum filesize in bytes to look at (default: 1GB)')
 
     args = parser.parse_args()
 
@@ -297,17 +321,24 @@ def main():
         sys.exit(1)
 
     # Find out what's in the source tree.
-    cache = load_cache(args.cache_file)
+    cache = {}
+    try:
+        cache = load_cache(args.cache_file)
+    except CannotCreateCacheFile as e:
+        logging.critical(e)
+        sys.exit(1)
+
     try:
         src_filesizes = get_tree_filesizes(
                 os.path.abspath(args.source),
                 cache,
+                min_filesize=args.min_filesize,
                 show_source_dupes=args.show_source_dupes)
     except BadRoot as e:
         logging.critical(e)
         sys.exit(1)
-
-    write_cache(args.cache_file, cache)
+    finally:
+        write_cache(args.cache_file, cache)
 
     # Pick a cleanup strategy.
     callback = print_cleanup_command

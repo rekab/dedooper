@@ -11,9 +11,10 @@ source directory in a cache file.
 
 `python dedoop.py [--[no]show_source_dupes] [--[no]dry_run] [--[no]prompt] [--cache_file=<filename>] <source> <cleanup>`
 
-* `--[no]show_source_dupes`: Prints duplicates in the source tree (default: true)
-* `--cache_file`: Location of the cache file. Defaults to ~/.dedooper.cache.
-* `--[no]dry_run`: Print commands rather than executing them (default: true)
-* `--[no]prompt`: Prompt before creating symlinks (default: true)
+* `--[no]show_source_dupes`: Prints duplicates in the source tree. (default: true)
+* `--cache_file`: Location of the cache file. (default: ~/.dedooper.cache)
+* `--min_filesize`: Minimum filesize (in bytes) to examine. (default: 1GB)
+* `--[no]dry_run`: Print commands rather than executing them. (default: true)
+* `--[no]prompt`: Prompt before creating symlinks. (default: true)
 * `<source>`: Directory containing original files.
 * `<cleanup>`: Directory containing duplicate files to be turned into symlinks to `<source>`.
