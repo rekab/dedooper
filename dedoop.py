@@ -152,7 +152,8 @@ def get_tree_filesizes(
     num_items = 0
     for cacheitem in hashwalk(root, cache=cache):
         if cacheitem.size < min_filesize:
-            logging.info('skipping small file %s (size=%s < min=%s)', cacheitem.abspath, cacheitem.size, min_filesize)
+            logging.info('skipping small file %s (size=%s < min=%s)',
+                    cacheitem.abspath, cacheitem.size, min_filesize)
             continue
         num_items += 1
         if show_source_dupes and cacheitem.size in sizes:
