@@ -315,8 +315,8 @@ def main():
             '--min_filesize',
             dest='min_filesize',
             type=int,
-            default=1024*1024*1024,
-            help='minimum filesize in bytes to look at (default: 1GB)')
+            default=1024*1024*512,
+            help='minimum filesize in bytes to look at (default: 512MB)')
 
     args = parser.parse_args()
 
