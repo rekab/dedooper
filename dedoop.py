@@ -1,5 +1,6 @@
 #!/usr/bin/python
 
+from __future__ import print_function
 import argparse
 import hashlib
 import json
@@ -54,7 +55,7 @@ class CacheItem(object):
                 b = f.read(READ_SIZE)
                 if b == '':
                     break
-                m.update(b)
+                m.update(b.encode('utf-8'))
         self._checksum = m.hexdigest()
         return self._checksum
 
@@ -173,7 +174,7 @@ def get_tree_filesizes(
 
 
 def print_cleanup_command(other, cleanup):
-    print 'ln -sf %s %s' % (pipes.quote(other), pipes.quote(cleanup))
+    print('ln -sf %s %s' % (pipes.quote(other), pipes.quote(cleanup)))
 
 
 def create_symlink(other, cleanup):
@@ -249,7 +250,7 @@ def write_cache(cache_path, cache):
     with open(tmp_output, 'w') as f:
         for cache_key in cache:
             assert cache[cache_key].abspath == cache_key
-            print >>f, json.dumps(cache[cache_key], cls=CacheItemEncoder)
+            print(json.dumps(cache[cache_key], cls=CacheItemEncoder), file=f)
     os.rename(tmp_output, cache_path)
     logging.info('wrote cache to %s', cache_path)
 
