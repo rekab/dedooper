@@ -9,8 +9,13 @@ import os
 import pipes
 import sys
 
-
 READ_SIZE = 1024 * 4
+
+
+if not hasattr(sys, 'setdefaultencoding'):
+   reload(sys)
+sys.setdefaultencoding('utf8')
+
 
 class Error(Exception):
     pass
