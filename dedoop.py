@@ -56,7 +56,7 @@ class CacheItem(object):
 
         logging.info('calculating checksum for %s', self.abspath)
         m = hashlib.sha1()
-        with open(self.abspath, 'r') as f:
+        with open(self.abspath, 'rb') as f:
             while True:
                 b = f.read(READ_SIZE)
                 if b == '':
