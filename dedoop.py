@@ -59,9 +59,9 @@ class CacheItem(object):
         with open(self.abspath, 'rb') as f:
             while True:
                 b = f.read(READ_SIZE)
-                if b == '':
+                if not b:
                     break
-                m.update(b.encode('utf-8'))
+                m.update(b)
         self._checksum = m.hexdigest()
         return self._checksum
 
